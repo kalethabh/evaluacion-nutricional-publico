@@ -1,3 +1,4 @@
+# main.py
 """
 FastAPI main (modo dev, con DB opcional) para el Sistema de Evaluación Nutricional
 - Ajusta sys.path para encontrar /app/src (imports de api.* y src.api.*)
@@ -21,6 +22,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import text  # para testear la conexión SQL
 
 # --- Configuración de imports ---
@@ -188,18 +190,29 @@ if import_excel_router:
     app.include_router(import_excel_router, prefix="/api/import", tags=["import"])
 
 # ---------- Manejadores globales ----------
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc: StarletteHTTPException):
+    """
+    Preserva el detalle de los HTTPException del router (p.ej. 'Followup not found').
+    Solo usa el formato 'Resource not found: ...' cuando la ruta realmente no existe.
+    """
+    if exc.status_code == 404:
+        # Si el detalle es el genérico de Starlette ("Not Found"), asumimos que no hay ruta.
+        if str(exc.detail).lower() in ("not found", "notfound"):
+            payload = {"detail": "Not found", "message": f"Resource not found: {request.url.path}"}
+        else:
+            # Deja pasar el mensaje específico del router
+            payload = {"detail": exc.detail}
+        return JSONResponse(status_code=404, content=payload)
+
+    # Para otros códigos, responde con el detalle tal cual
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
-
-
-@app.exception_handler(404)
-async def not_found_handler(request, exc):
-    return JSONResponse(
-        status_code=404,
-        content={"detail": "Not found", "message": f"Resource not found: {request.url.path}"}
-    )
 
 # ---------- Main ----------
 if __name__ == "__main__":

@@ -41,14 +41,27 @@ class UsuarioBase(BaseModel):
 
 class UsuarioCreate(UsuarioBase):
     contrasena: str
+    rol_id: Optional[int] = None  # <--- NUEVO (admin podrá usarlo)
+
+
+class UsuarioUpdate(BaseModel):  # <--- NUEVO
+    nombre: Optional[str] = None
+    telefono: Optional[str] = None
+    rol_id: Optional[int] = None  # solo admin
 
 
 class UsuarioResponse(UsuarioBase):
     id_usuario: int
     fecha_creado: datetime
+    rol_id: Optional[int] = None  # <--- NUEVO
 
     class Config:
         orm_mode = True
+
+
+class PasswordChangeRequest(BaseModel):  # <--- NUEVO
+    nueva_contrasena: str
+    contrasena_actual: Optional[str] = None
 
 
 # ===============================
