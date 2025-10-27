@@ -1,0 +1,145 @@
+name: infra
+
+services:
+  # =========================
+  # PostgreSQL Database
+  # =========================
+  db:
+    image: postgres:15-alpine
+    container_name: infra-db-1
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nutrition-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================
+  # Backend (FastAPI)
+  # =========================
+  backend:
+    build:
+      context: /workspaces/evaluacion-nutricional-publico
+      dockerfile: infra/Dockerfile.backend
+    container_name: infra-backend-1
+    restart: unless-stopped
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload --log-level info
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend:/app
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URL: ${DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      ENVIRONMENT: ${ENVIRONMENT}
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME}
+      NEXT_PUBLIC_VERSION: ${NEXT_PUBLIC_VERSION}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nutrition-network
+    working_dir: /app
+
+  # =========================
+  # Frontend (Next.js)
+  # =========================
+  frontend:
+    build:
+      context: /workspaces/evaluacion-nutricional-publico
+      dockerfile: infra/Dockerfile.frontend
+    container_name: infra-frontend-1
+    restart: unless-stopped
+    command: npm run dev
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME}
+      NEXT_PUBLIC_VERSION: ${NEXT_PUBLIC_VERSION}
+      ENVIRONMENT: ${ENVIRONMENT}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      DATABASE_URL: ${DATABASE_URL}
+    volumes:
+      - ../:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - nutrition-network
+    working_dir: /app
+
+  # =========================
+  # Nginx (Proxy)
+  # =========================
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: infra-nginx-1
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://backend:8000/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nutrition-network
+
+# =========================
+# Networks & Volumes
+# =========================
+networks:
+  nutrition-network:
+    name: infra_nutrition-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: infra_postgres_data
+  backend_uploads:
+    name: infra_backend_uploads
+  backend_logs:
+    name: infra_backend_logs
+  nginx_logs:
+    name: infra_nginx_logs
