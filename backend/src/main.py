@@ -1,10 +1,8 @@
 """
 FastAPI main (modo dev, con DB opcional) para el Sistema de Evaluación Nutricional
-- Ajusta sys.path para encontrar /app/src (imports de api.* y src.api.*)
-- Carga condicional de settings y DB
-- Registra routers: children, auth, followups, reports, import_excel, users
-- CORS y TrustedHost configurados dinámicamente
-- Incluye healthcheck para Docker (/health y /healthz)
+...
+- Registra routers: children, auth, followups, reports, import_excel, users, evaluations <-- CORREGIDO
+...
 """
 
 # ===============================================
@@ -56,7 +54,7 @@ _SessionLocal = None
 _Base = None
 try:
     from db.session import engine as _engine, SessionLocal as _SessionLocal  # type: ignore
-    from db.base import Base as _Base  # type: ignore
+    from db.base import Base as _Base  # type type: ignore
 except Exception:
     # correremos sin DB si no está disponible
     pass
@@ -94,7 +92,8 @@ auth_router         = _try_import_router(["api.auth", "src.api.auth"])
 followups_router    = _try_import_router(["api.followups", "src.api.followups"])
 reports_router      = _try_import_router(["api.reports", "src.api.reports"])
 import_excel_router = _try_import_router(["api.import_excel", "src.api.import_excel"])
-users_router        = _try_import_router(["api.users", "src.api.users"])  # <--- NUEVO
+users_router        = _try_import_router(["api.users", "src.api.users"])  
+evaluations_router  = _try_import_router(["api.evaluations", "src.api.evaluations"]) # <--- AÑADIDO
 
 # ---------- Lifespan ----------
 @asynccontextmanager
@@ -187,8 +186,11 @@ if reports_router:
     app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
 if import_excel_router:
     app.include_router(import_excel_router, prefix="/api/import", tags=["import"])
-if users_router:  # <--- NUEVO
+if users_router:  
     app.include_router(users_router, prefix="/api/users", tags=["users"])
+if evaluations_router: # <--- REGISTRADO
+    app.include_router(evaluations_router, prefix="/api/evaluations", tags=["evaluations"])
+
 
 # ---------- Manejadores globales ----------
 @app.exception_handler(Exception)
